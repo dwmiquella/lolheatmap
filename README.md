@@ -1,49 +1,192 @@
 # LoL Heatmaps
 
-Heatmaps and stats for your League of Legends games on Summoner's Rift, with a
-side-by-side comparison against Master+ players on the same champion and role.
+Explore your League of Legends match patterns on Summoner’s Rift. Filter recorded
+positions, kills, deaths, and assists; compare the same champion and role with a
+reference built from matches sampled from high-elo accounts.
 
-- Time spent, kills, deaths and assists heatmaps (filter by champion, role, result, side, game minute)
-- Win rate, KDA, CS/min, vision/min, kill participation, per-champion breakdown
-- "Vs high elo" tab: your heatmap, the high-elo heatmap, and a difference map
+**Try it without an API key:** launch the app and click **Explore demo**.
+The 12 demo matches are fictional, deterministic examples with no real player IDs.
 
-## Quick start
+![Example position heatmap generated from fictional demo matches](docs/demo-heatmap.png)
+
+## Run locally
+
+Use **Python 3.12**. Run these commands in a terminal:
 
 ```bash
-git clone https://github.com/<you>/lolheat && cd lolheat
-pip install -r requirements.txt
-streamlit run app.py
+git clone https://github.com/dwmiquella/lolheatmap.git
+cd lolheatmap
+python -m venv .venv
 ```
 
-Paste your Riot API key into the sidebar (get one free at https://developer.riotgames.com),
-or put `RIOT_API_KEY=RGAPI-...` in a `.env` file. Dev keys expire every 24 hours.
-Never commit your key; `.env` is already in `.gitignore`.
+Activate the environment:
 
-## Notes
+```powershell
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+```
 
-- Everything fetched is cached in `./cache`, so repeat runs are fast. Delete it to refetch.
-- A dev key allows ~100 requests per 2 minutes, so a first run of 30 games takes a few minutes.
-  With a production key, set `RIOT_MIN_INTERVAL=0.1` to speed things up.
-- The high-elo benchmark scans top players' recent games for your champion/role, so
-  niche champions may need several minutes or return few games.
-- Riot only records one position per minute; time-spent heatmaps interpolate between samples.
+```bash
+# macOS / Linux
+source .venv/bin/activate
+```
 
-*This project isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games
-or anyone officially involved in producing or managing Riot Games properties. Riot Games and all
-associated properties are trademarks or registered trademarks of Riot Games, Inc.*
+Then install and launch:
 
-## Rebuilding the high-elo benchmark
+```bash
+python -m pip install -r requirements.txt
+python -m streamlit run app.py
+```
 
-`data/benchmark.npz` ships with the repo, so users get instant comparisons. To refresh it
-(worth doing every patch or two, since the meta shifts):
+Open the local URL printed by Streamlit, normally `http://localhost:8501`.
+If PowerShell blocks activation, use `.\.venv\Scripts\python.exe` in place of
+`python` in the install and launch commands; no execution-policy change is needed.
+
+## Analyze your matches
+
+1. Click **Explore demo** to learn the controls, or connect your Riot account.
+2. For real matches, enter your Riot ID (`Name#TAG`), server, queue, and match count.
+3. Supply a Riot developer key in the local app, or copy `.env.example` to `.env`
+   and set `RIOT_API_KEY`. Obtain your key from <https://developer.riotgames.com>.
+4. Click **Analyze player**. Progress reports processed matches; eligible games
+   exclude non-Summoner’s Rift maps and games shorter than five minutes.
+5. Use **Your heatmap** for a large map, or enable the four-map overview. Sidebar
+   filters also apply to **Champions**. Reset filters with one button.
+6. Use **Compare** to select a champion, role, and five-minute time window.
+7. Download the current map as PNG or champion statistics as CSV.
+
+An unsuccessful new search leaves previous results visible with their original
+player/server label. A mid-collection API failure preserves already loaded games
+and displays a warning. Empty and invalid time windows are handled without crashing.
+
+## How to read the maps
+
+- Position density defaults to actual timeline samples, approximately one per minute.
+  It is not an exact route or a precise measurement of time in an area.
+- Optional interpolation estimates straight lines between those samples. It can
+  cross terrain and cannot reliably reconstruct recalls, teleports, or movement.
+- Maps are normalized to sum to one. Color represents the share of selected samples
+  in a smoothed grid cell; it does not compare absolute event volume.
+- Comparison panels share one color scale. Difference colors indicate more relative
+  activity (red) or less (blue), **not better or worse play**.
+- If either population has no events, the difference map is unavailable.
+- Statistics always describe **full games**; time controls change only the maps.
+- Longer games contribute more position samples. Repeated games from the same player
+  are not independent evidence. Small cohorts are exploratory, not coaching advice.
+
+## Comparison contract
+
+Comparison deliberately has its own controls, separate from exploration filters.
+Both populations use the same champion, role, reference queue, orientation, time
+blocks, and position-construction method. Results and sides are pooled. The app
+shows sample sizes, build date, patches, and available region metadata.
+
+The bundled `data/benchmark.npz` is the existing legacy artifact, built on
+2026-10-03 from 2,960 matches. It retains its original interpolated positions.
+Its metadata lists patches 16.19 and 16.18 but does not retain complete patch
+counts, region coverage, sampling settings, or unique-player counts. These missing
+facts are not reconstructed or invented. Comparisons explicitly use interpolation
+on both sides with this bundle. Rebuilt version-2 bundles use sampled positions.
+
+Benchmark games may come from different patches and regions than your matches;
+this is a descriptive reference, not a controlled or rank-adjusted experiment.
+The legacy builder credited all participants in sampled apex-player matches, so
+individual participants must not be described as verified Master+ players.
+
+Missing champion/role references show a helpful empty state. The UI no longer
+launches an expensive live scan as a fallback. The old live-scan helper remains
+available to scripts through `lolheat.py`.
+
+## Rebuild the reference
+
+Set `RIOT_API_KEY` in your environment or `.env`, then run:
 
 ```bash
 python build_benchmark.py --platform na1 --platform euw1 --platform kr --matches 2000
-git add data/benchmark.npz && git commit -m "Update benchmark"
 ```
 
-It is resumable (Ctrl+C saves progress; re-run to continue from `./cache`). ~2,000 matches is
-about 4,000 API requests, roughly 80 minutes per platform on a dev key. Champion/role combos
-with fewer than `--min-games` samples are dropped and fall back to a slow live scan in the app.
+Use `--top-only` to count only the sampled apex-tier accounts (rank at collection
+time, not necessarily match time), or `--tiers challenger,grandmaster` to narrow
+sampling. Defaults count all participants in sampled matches and label that
+population honestly.
 
-By default the benchmark samples players at random from Master, Grandmaster and Challenger. Use `--tiers challenger,grandmaster` to narrow it.
+New metadata includes all observed patch counts, configured regions and per-region
+match counts, queue, sampling parameters, unique-player counts, cohort counts,
+position method, and whether the run was interrupted. An empty build does not
+replace a usable benchmark. File replacement is atomic.
+
+Downloads are cached; reruns **restart aggregation using cached downloads** rather
+than restoring an aggregation checkpoint. Ctrl+C saves eligible accumulated cohorts.
+Review an interrupted result before committing it. Restart the app after replacing
+a benchmark to clear in-memory caches.
+
+The default client spacing is 1.25 seconds. Riot rate-limit responses are retried
+using their retry delay. A first uncached search can take several minutes. Do not
+lower the interval based solely on possessing a production key; use your actual quota.
+
+## Configuration and hosting
+
+- `.env`: local configuration, ignored by Git.
+- `RIOT_API_KEY`: server-owned key; never inserted into browser widgets.
+- `.streamlit/secrets.toml`: alternatively set `RIOT_API_KEY = "..."` on the server.
+- `LOLHEAT_CACHE`: local JSON cache directory (default `cache/`).
+- `RIOT_MIN_INTERVAL`: minimum spacing per client in seconds (default `1.25`).
+
+This remains a local/small-use Streamlit app. Before a public multi-user deployment,
+add a shared rate limiter/job queue across sessions and workers, usage controls,
+and a cache retention policy. Per-client spacing is not a global quota manager.
+No hosting or production API registration is performed by this update.
+
+## Development
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m ruff check .
+python -m ruff format --check .
+python -m pytest -q
+```
+
+GitHub Actions runs the same checks on Python 3.12. Dependency locks are resolved
+for Python 3.12; edit the `.in` files and regenerate when updating dependencies:
+
+```bash
+python -m piptools compile --strip-extras -o requirements.txt requirements.in
+python -m piptools compile --strip-extras -o requirements-dev.txt requirements-dev.in
+```
+
+| File/module | Responsibility |
+| --- | --- |
+| `app.py` | Forms, session state, filtering controls, chart rendering cache |
+| `heatmap/riot_client.py` | Riot requests, retries, match collection |
+| `heatmap/cache.py` | Slim payloads, atomic disk caching, corrupt-cache recovery |
+| `heatmap/analysis.py` | Selection, statistics, points, time boundaries |
+| `heatmap/plots.py` | Normalization, maps, shared color scales and legends |
+| `heatmap/benchmark.py` | Reference loading |
+| `heatmap/demo.py` | Small fictional dataset |
+| `build_benchmark.py` | Offline reference generation |
+| `lolheat.py` | Compatibility exports for older scripts |
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [the upgrade walkthrough](docs/UPGRADE.md).
+
+## Troubleshooting
+
+- **Key rejected:** refresh your key or check the host configuration.
+- **Player not found:** check both parts of `Name#TAG` and the selected server.
+- **No comparison:** load games in the reference queue (legacy bundle: ranked solo),
+  then choose a champion/role present in both datasets.
+- **Old cache:** old match entries without queue metadata are fetched again once.
+- **Clear downloaded data:** stop the app and delete the local `cache/` directory.
+  The bundled map and benchmark remain available.
+
+## Credits and licensing
+
+The map image is a Riot Games asset originally downloaded by this project's
+Data Dragon integration; it is kept under `assets/` so demo mode works offline.
+This update does not assign a new license to the existing project. The repository
+owner should choose a code license before advertising reuse rights; Riot assets
+remain subject to their own terms.
+
+This project isn't endorsed by Riot Games and doesn't reflect the views or opinions
+of Riot Games or anyone officially involved in producing or managing Riot Games
+properties. Riot Games and all associated properties are trademarks or registered
+trademarks of Riot Games, Inc.
